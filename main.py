@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 import joblib
 import pandas as pd
-import tensorflow as tf
 
 app = FastAPI()
 
@@ -24,4 +23,5 @@ def predict(data: dict):
         "household_id": data["householdid"],
         "anomaly_score": float(anomaly_score),
         "theft_detected": bool(theft)
+
     }
