@@ -20,8 +20,9 @@ def predict(data: dict):
     theft = rf_model.predict(df)[0]
 
     return {
-        "household_id": data["householdid"],
+        "household_id": data["household_id"],
         "anomaly_score": float(anomaly_score),
         "theft_detected": bool(theft)
 
     }
+
