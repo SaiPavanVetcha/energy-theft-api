@@ -4,11 +4,11 @@ import joblib
 
 app = FastAPI(title="Energy Theft Detection API")
 
-# Load ML models
+# Load models
 iso_model = joblib.load("iso_model.pkl")
 rf_model = joblib.load("rf_model.pkl")
 
-# Season encoding (same as training)
+# Season encoding (must match training)
 season_map = {
     "winter": 0,
     "summer": 1,
@@ -17,7 +17,7 @@ season_map = {
 
 @app.get("/")
 def home():
-    return {"message": "Energy Theft Detection API Running"}
+    return {"message": "Energy Theft Detection API is running"}
 
 @app.post("/predict")
 def predict(data: dict):
@@ -25,16 +25,16 @@ def predict(data: dict):
     # Save household id separately
     household_id = data["household_id"]
 
-    # Convert input to dataframe
+    # Convert request → dataframe
     df = pd.DataFrame([data])
 
     # Encode season
     df["season"] = df["season"].map(season_map)
 
-    # Remove household id from model input
+    # Remove id from ML input
     df_model = df.drop(columns=["household_id"])
 
-    # -------- ISO MODEL --------
+    # -------- Isolation Forest --------
     iso_features = [
         "power_watts",
         "voltage_v",
@@ -52,14 +52,14 @@ def predict(data: dict):
 
     anomaly_score = iso_model.decision_function(iso_input)[0]
 
-    # -------- ERROR CALCULATION --------
+    # -------- Energy Prediction Error --------
     predicted_energy = (df["power_watts"] * df["duration_minutes"]) / 60 / 1000
 
     prediction_error = abs(predicted_energy - df["energy_kwh"])[0]
 
     error_pct = (prediction_error / df["energy_kwh"])[0] * 100
 
-    # -------- RF MODEL INPUT --------
+    # -------- Random Forest Input --------
     rf_input = pd.DataFrame({
         "power_watts": [df["power_watts"][0]],
         "voltage_v": [df["voltage_v"][0]],
@@ -74,21 +74,21 @@ def predict(data: dict):
         "error_pct": [error_pct]
     })
 
-    theft = rf_model.predict(rf_input)[0]
+    theft_prediction = rf_model.predict(rf_input)[0]
 
-    # Risk level
+    # Risk level logic
     if anomaly_score > 0.8:
-        risk = "High"
+        risk_level = "High"
     elif anomaly_score > 0.5:
-        risk = "Medium"
+        risk_level = "Medium"
     else:
-        risk = "Low"
+        risk_level = "Low"
 
     return {
-        "alert": "⚠ Possible Energy Theft Detected" if theft else "Normal Usage",
+        "alert": "⚠ Possible Energy Theft Detected" if theft_prediction else "Normal Usage",
         "household_id": household_id,
         "anomaly_score": float(anomaly_score),
         "prediction_error_kwh": float(prediction_error),
         "error_percent": float(error_pct),
-        "risk_level": risk
+        "risk_level": risk_level
     }
