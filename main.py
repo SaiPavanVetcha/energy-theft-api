@@ -8,7 +8,7 @@ app = FastAPI(title="Energy Theft Detection API")
 iso_model = joblib.load("iso_model.pkl")
 rf_model = joblib.load("rf_model.pkl")
 
-# Season encoding (must match training)
+# season encoding (must match training)
 season_map = {
     "winter": 0,
     "summer": 1,
@@ -17,7 +17,7 @@ season_map = {
 
 @app.get("/")
 def home():
-    return {"message": "Energy Theft Detection API running"}
+    return {"message": "Energy Theft Detection API Running"}
 
 @app.post("/predict")
 def predict(data: dict):
@@ -26,12 +26,13 @@ def predict(data: dict):
 
         household_id = data["household_id"]
 
+        # convert input to dataframe
         df = pd.DataFrame([data])
 
         # encode season
         df["season"] = df["season"].map(season_map).fillna(0)
 
-        # remove id from ML input
+        # remove id from model features
         df_model = df.drop(columns=["household_id"])
 
         # -------- Isolation Forest --------
@@ -52,31 +53,34 @@ def predict(data: dict):
 
         anomaly_score = iso_model.decision_function(iso_input)[0]
 
-        # -------- prediction error --------
+        # -------- Prediction Error --------
         predicted_energy = (df["power_watts"] * df["duration_minutes"]) / 60 / 1000
 
         prediction_error = abs(predicted_energy - df["energy_kwh"])[0]
 
         error_pct = (prediction_error / df["energy_kwh"])[0] * 100
 
-        # -------- RF features --------
+        # -------- Random Forest Input --------
         rf_input = pd.DataFrame({
             "power_watts":[df["power_watts"][0]],
             "voltage_v":[df["voltage_v"][0]],
             "current_a":[df["current_a"][0]],
             "energy_kwh":[df["energy_kwh"][0]],
             "daily_cumulative_kwh":[df["daily_cumulative_kwh"][0]],
+            "occupancy_count":[df["occupancy_count"][0]],
             "hour":[df["hour"][0]],
+            "outside_temp_c":[df["outside_temp_c"][0]],
             "anomaly_score":[anomaly_score],
-            "prediction_error":[prediction_error]
+            "prediction_error":[prediction_error],
+            "error_pct":[error_pct]
         })
 
-        # ensure correct column order
+        # ensure exact column order
         rf_input = rf_input[rf_model.feature_names_in_]
 
         theft = rf_model.predict(rf_input)[0]
 
-        # risk level
+        # risk level logic
         if anomaly_score > 0.8:
             risk = "High"
         elif anomaly_score > 0.5:
@@ -89,6 +93,7 @@ def predict(data: dict):
             "household_id": household_id,
             "anomaly_score": float(anomaly_score),
             "prediction_error_kwh": float(prediction_error),
+            "error_percent": float(error_pct),
             "risk_level": risk
         }
 
